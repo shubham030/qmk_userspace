@@ -1,0 +1,97 @@
+name: Generate Keymap Visualizations
+
+on:
+  push:
+    paths:
+      - 'keyboards/sofle/rev1/keymaps/shubham030/keymap.c'
+      - 'keyboards/sofle/rev1/keymaps/shubham030/config.h'
+      - 'keyboards/sofle/rev1/keymaps/shubham030/rules.mk'
+  workflow_dispatch:
+
+jobs:
+  generate-keymap:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install QMK CLI
+      run: |
+        python -m pip install --upgrade pip
+        pip install qmk
+        
+    - name: Install keymap-drawer
+      run: |
+        pip install keymap-drawer
+        
+    - name: Setup QMK
+      run: |
+        qmk setup -y
+        
+    - name: Generate keymap JSON
+      run: |
+        cd keyboards/sofle/rev1/keymaps/shubham030
+        qmk c2json -kb sofle/rev1 -km shubham030 keymap.c > keymap.json
+        
+    - name: Parse keymap
+      run: |
+        cd keyboards/sofle/rev1/keymaps/shubham030
+        keymap-drawer parse -q keymap.json > keymap_parsed.yaml
+        
+    - name: Generate individual layer SVGs
+      run: |
+        cd keyboards/sofle/rev1/keymaps/shubham030
+        keymap-drawer draw keymap_parsed.yaml -s L0 -o sofle_layer0_base.svg
+        keymap-drawer draw keymap_parsed.yaml -s L1 -o sofle_layer1_lower.svg
+        keymap-drawer draw keymap_parsed.yaml -s L2 -o sofle_layer2_raise.svg
+        keymap-drawer draw keymap_parsed.yaml -s L3 -o sofle_layer3_adjust.svg
+        
+    - name: Generate complete keymap overview
+      run: |
+        cd keyboards/sofle/rev1/keymaps/shubham030
+        keymap-drawer draw keymap_parsed.yaml -o sofle_keymap.svg
+        
+    - name: Check for changes
+      id: verify-changed-files
+      run: |
+        if [ -n "$(git status --porcelain)" ]; then
+          echo "changed=true" >> $GITHUB_OUTPUT
+        else
+          echo "changed=false" >> $GITHUB_OUTPUT
+        fi
+        
+    - name: Commit updated keymap visualizations
+      if: steps.verify-changed-files.outputs.changed == 'true'
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add keyboards/sofle/rev1/keymaps/shubham030/*.svg
+        git add keyboards/sofle/rev1/keymaps/shubham030/keymap.json
+        git add keyboards/sofle/rev1/keymaps/shubham030/keymap_parsed.yaml
+        git commit -m "Auto-update keymap visualizations for sofle/shubham030
+        
+        🤖 Generated with keymap-drawer
+        
+        Generated files:
+        - sofle_layer0_base.svg (Base Layer)
+        - sofle_layer1_lower.svg (Lower Layer) 
+        - sofle_layer2_raise.svg (Raise Layer)
+        - sofle_layer3_adjust.svg (Adjust Layer)
+        - sofle_keymap.svg (Complete Overview)
+        - keymap.json (QMK JSON export)
+        - keymap_parsed.yaml (keymap-drawer data)"
+        
+    - name: Push changes
+      if: steps.verify-changed-files.outputs.changed == 'true'
+      uses: ad-m/github-push-action@master
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        branch: ${{ github.ref }}
